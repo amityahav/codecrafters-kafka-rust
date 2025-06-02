@@ -26,7 +26,7 @@ struct Varint {
 
 impl Serializable for Varint {
     fn serialize(&self) -> Vec<u8> {
-        zigzag_encode(self.value).to_be_bytes().to_vec()
+        self.value.to_be_bytes().to_vec()
     }
 }
 
