@@ -21,63 +21,68 @@ impl Server {
     }
 }
 
-fn handle_stream(mut stream: TcpStream) {
-    // read message_size.
-    let mut size_buf: [u8; 4] = [0; 4];
-    let _ = stream.read_exact(&mut size_buf);
-    let message_size = u32::from_be_bytes(size_buf) as usize;
+const API_VERSIONS: i16 = 18;
 
-    // read request.
-    let mut request_buf = vec![0u8; message_size];
-    let _ = stream.read_exact(&mut request_buf);
-
-    // deserialize request.
-    let mut request = Request::default();
-    request.deserialize(Cursor::new(&request_buf));
-
-    let body_buf: Vec<u8>;
-
+fn apply_handler(request: &Request) -> Result<Vec<u8>, String> {
     match request.header.request_api_key {
-        18 => {
-            match handle_api_versions_req(&request) {
-                Ok(res) => {
-                   body_buf = res.serialize()
-                },
-                Err(e) => {
-                    eprintln!("Failed handling ApiVersions request: {}", e);
-                    return; // consider returning an error to the client
-                }
+        API_VERSIONS => {
+            match handle_api_versions_req(request) {
+                Ok(res) => Ok(res.serialize()),
+                Err(e) => Err(format!("Failed handling ApiVersions request: {}", e))
             }
             
         },
         i16::MIN..=17_i16 | 19_i16..=i16::MAX => todo!()
     }
+}
 
-    // send back response.
-    let res = Response{
-        header: request.header.correlation_id,
-        body: body_buf,
-    };
+fn handle_stream(mut stream: TcpStream) {
+    loop {
+        // read message_size.
+        let mut size_buf: [u8; 4] = [0; 4];
+        let _ = stream.read_exact(&mut size_buf);
+        let message_size = u32::from_be_bytes(size_buf) as usize;
 
-    print!("RES: ");
-    for byte in res.serialize() {
-        print!("{:02x} ", byte);
+        // read request.
+        let mut request_buf = vec![0u8; message_size];
+        let _ = stream.read_exact(&mut request_buf);
+
+        // deserialize request.
+        let mut request = Request::default();
+        request.deserialize(Cursor::new(&request_buf));
+
+        match apply_handler(&request) {
+            Ok(res) => {
+                // send back response.
+                let res = Response{
+                    header: request.header.correlation_id,
+                    body: res,
+                };
+
+                let _ = stream.write(&res.serialize());
+            },
+            Err(e) => eprintln!("Failed to apply handler: {}", e)
+        }
     }
 
-    println!();
+    // print!("RES: ");
+    // for byte in res.serialize() {
+    //     print!("{:02x} ", byte);
+    // }
 
-    let _ = stream.write(&res.serialize());
+    // println!();
+
 }
 
 fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, String>{
     let mut versions: CompactArray<ApiVersion> = CompactArray::default();
     let mut error_code = 0;
-    if request.header.request_api_version < 0 || request.header.request_api_key > 18 {
+    if !(0..=4).contains(&request.header.request_api_version) {
         error_code = 35;
     }
 
     versions.append(ApiVersion{
-        key: 18,
+        key: API_VERSIONS,
         min: 0,
         max: 4,
         tag_buffer:TagBuffer{data:0},

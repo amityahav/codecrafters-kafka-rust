@@ -56,7 +56,6 @@ impl <T: Serializable> Serializable for CompactArray<T> {
     }
 }
 
-
 #[derive(Default)]
 pub struct RequestHeader {
     pub request_api_key: i16,
