@@ -115,7 +115,7 @@ impl Serializable for TagBuffer {
         // return 0 for now
         let mut res = Vec::new();
 
-        res.extend(0_i32.to_be_bytes());
+        res.extend(0_u8.to_be_bytes());
 
         res
     }
