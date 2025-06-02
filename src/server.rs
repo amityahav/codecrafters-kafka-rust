@@ -1,5 +1,7 @@
-use std::{io::{Read, Write}, net::TcpListener, net::TcpStream};
+use std::{io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}};
 use std::io::Cursor;
+use std::thread;
+
 use crate::wire::{ApiVersion, ApiVersionsResponse, CompactArray, Request, Response, TagBuffer, Serializable};
 
 pub struct Server {}
@@ -11,7 +13,12 @@ impl Server {
                 Ok(stream) => {
                     println!("accepted new connection");
                     
-                    handle_stream(stream);
+                    thread::spawn(|| {
+                        match handle_stream(stream) {
+                            Ok(()) => {},
+                            Err(e) => eprintln!("{}", e),
+                        }
+                    });
                 }
                 Err(e) => {
                     eprintln!("error: {}", e);
@@ -36,11 +43,19 @@ fn apply_handler(request: &Request) -> Result<Vec<u8>, String> {
     }
 }
 
-fn handle_stream(mut stream: TcpStream) {
+fn handle_stream(mut stream: TcpStream) -> Result<(), String> {
     loop {
         // read message_size.
         let mut size_buf: [u8; 4] = [0; 4];
-        let _ = stream.read_exact(&mut size_buf);
+        if let Err(e) =  stream.read_exact(&mut size_buf) {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                // client is closed
+                return Ok(());
+            }
+
+            return Err(e.to_string());
+        }
+
         let message_size = u32::from_be_bytes(size_buf) as usize;
 
         // read request.
@@ -61,7 +76,9 @@ fn handle_stream(mut stream: TcpStream) {
 
                 let _ = stream.write(&res.serialize());
             },
-            Err(e) => eprintln!("Failed to apply handler: {}", e)
+            Err(e) => {
+                return Err(format!("failed to apply handler: {}", e));
+            }
         }
     }
 
