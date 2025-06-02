@@ -1,6 +1,6 @@
 use std::{io::{Read, Write}, net::TcpListener, net::TcpStream};
 use std::io::Cursor;
-use crate::wire::{Request, Response};
+use crate::wire::{ApiVersionsResponse, Request, Response};
 
 pub struct Server {}
 
@@ -35,11 +35,33 @@ fn handle_stream(mut stream: TcpStream) {
     let mut request = Request::default();
     request.deserialize(Cursor::new(&request_buf));
 
+    let body_buf: Vec<u8>;
+
+    match request.header.request_api_key {
+        18 => {
+            match handle_api_versions_req(&request) {
+                Ok(res) => {
+                   body_buf = res.serialize()
+                },
+                Err(e) => {
+                    eprintln!("Failed handling ApiVersions request: {}", e);
+                    return; // consider returning an error to the client
+                }
+            }
+            
+        },
+        i16::MIN..=17_i16 | 19_i16..=i16::MAX => todo!()
+    }
+
     // send back response.
     let res = Response{
         header: request.header.correlation_id,
-        body: Vec::new(),
+        body: body_buf,
     };
 
     let _ = stream.write(&res.serialize());
+}
+
+fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, String>{
+    Ok(ApiVersionsResponse{error_code: 35})
 }

@@ -14,7 +14,7 @@ struct CompactArray {
 
 #[derive(Default)]
 pub struct RequestHeader {
-    request_api_key: i16,
+    pub request_api_key: i16,
     request_api_version: i16,
     pub correlation_id: i32,
     client_id: NullableString,
@@ -57,5 +57,19 @@ impl Response {
         res.extend(self.body.clone());
 
         res
+    }
+}
+
+pub struct ApiVersionsResponse {
+    pub error_code: i16
+}
+
+impl ApiVersionsResponse {
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut res: Vec<u8> = Vec::new();
+
+        res.extend(self.error_code.to_be_bytes());
+
+        res 
     }
 }
