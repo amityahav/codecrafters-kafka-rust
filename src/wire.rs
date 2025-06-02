@@ -60,7 +60,7 @@ impl <T: Serializable> Serializable for CompactArray<T> {
 #[derive(Default)]
 pub struct RequestHeader {
     pub request_api_key: i16,
-    request_api_version: i16,
+    pub request_api_version: i16,
     pub correlation_id: i32,
     client_id: NullableString,
     //tag_buffer: CompactArray<String>
