@@ -59,6 +59,13 @@ fn handle_stream(mut stream: TcpStream) {
         body: body_buf,
     };
 
+    print!("RES: ");
+    for byte in res.serialize() {
+        print!("{:02x} ", byte);
+    }
+
+    println!();
+    
     let _ = stream.write(&res.serialize());
 }
 
