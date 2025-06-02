@@ -72,7 +72,7 @@ fn handle_stream(mut stream: TcpStream) {
 fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, String>{
     let mut versions: CompactArray<ApiVersion> = CompactArray::default();
     let mut error_code = 0;
-    if request.header.request_api_version < 0 && request.header.request_api_key > 18 {
+    if request.header.request_api_version < 0 || request.header.request_api_key > 18 {
         error_code = 35;
     }
 
