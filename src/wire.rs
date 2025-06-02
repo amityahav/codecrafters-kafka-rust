@@ -11,8 +11,8 @@ struct NullableString {
     data: Vec<u8>
 }
 
-fn zigzag_encode(n: i32) -> u32 {
-    ((n << 1) ^ (n >> 31)) as u32
+fn zigzag_encode(n: i8) -> u8 {
+    ((n << 1) ^ (n >> 7)) as u8
 }
 
 fn zigzag_decode(n: u32) -> i32 {
@@ -21,7 +21,7 @@ fn zigzag_decode(n: u32) -> i32 {
 
 #[derive(Default)]
 struct Varint {
-    value: i32
+    value: i8
 }
 
 impl Serializable for Varint {
@@ -45,7 +45,7 @@ impl <T: Serializable> Serializable for CompactArray<T> {
     fn serialize(&self) -> Vec<u8> {
         let mut res = Vec::new();
 
-        let len_varint = Varint{value: (self.data.len() + 1) as i32};
+        let len_varint = Varint{value: (self.data.len() + 1) as i8};
 
         res.extend(len_varint.serialize());
         for elem in &self.data {
