@@ -1,16 +1,61 @@
 use std::io::Cursor;
 use byteorder::{ReadBytesExt, BigEndian};
 
+pub trait Serializable {
+    fn serialize(&self) -> Vec<u8>;
+}
+
 #[derive(Default)]
 struct NullableString {
     length: i16,
     data: Vec<u8>
 }
 
-#[derive(Default)]
-struct CompactArray {
-    
+fn zigzag_encode(n: i32) -> u32 {
+    ((n << 1) ^ (n >> 31)) as u32
 }
+
+fn zigzag_decode(n: u32) -> i32 {
+    ((n >> 1) as i32) ^ (-((n & 1) as i32))
+}
+
+#[derive(Default)]
+struct Varint {
+    value: i32
+}
+
+impl Serializable for Varint {
+    fn serialize(&self) -> Vec<u8> {
+        zigzag_encode(self.value).to_be_bytes().to_vec()
+    }
+}
+
+#[derive(Default)]
+pub struct CompactArray<T: Serializable> {
+    data: Vec<T>,
+}
+
+impl<T: Serializable> CompactArray<T> {
+    pub fn append(&mut self, elem: T) {
+        self.data.push(elem);
+    }
+}
+
+impl <T: Serializable> Serializable for CompactArray<T> {
+    fn serialize(&self) -> Vec<u8> {
+        let mut res = Vec::new();
+
+        let len_varint = Varint{value: (self.data.len() + 1) as i32};
+
+        res.extend(len_varint.serialize());
+        for elem in &self.data {
+            res.extend(elem.serialize());
+        }
+
+        res
+    }
+}
+
 
 #[derive(Default)]
 pub struct RequestHeader {
@@ -18,7 +63,7 @@ pub struct RequestHeader {
     request_api_version: i16,
     pub correlation_id: i32,
     client_id: NullableString,
-    tag_buffer: CompactArray
+    //tag_buffer: CompactArray<String>
 }
 
 impl RequestHeader {
@@ -46,8 +91,8 @@ pub struct Response {
     pub body: Vec<u8>
 }
 
-impl Response {
-    pub fn serialize(&self) -> Vec<u8> {
+impl Serializable for Response {
+    fn serialize(&self) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
 
         let body_size = self.body.len() as i32;
@@ -60,8 +105,48 @@ impl Response {
     }
 }
 
+#[derive(Default)]
+pub struct TagBuffer {
+    pub data: u8
+}
+
+impl Serializable for TagBuffer {
+    fn serialize(&self) -> Vec<u8> {
+        // return 0 for now
+        let mut res = Vec::new();
+
+        res.extend(0_i32.to_be_bytes());
+
+        res
+    }
+}
+
+#[derive(Default)]
+pub struct ApiVersion {
+    pub key: i16,
+    pub min: i16,
+    pub max: i16,
+    pub tag_buffer: TagBuffer
+}
+
+impl Serializable for ApiVersion {
+    fn serialize(&self) -> Vec<u8> {
+        let mut res = Vec::new();
+
+        res.extend(self.key.to_be_bytes());
+        res.extend(self.min.to_be_bytes());
+        res.extend(self.max.to_be_bytes());
+        res.extend(self.tag_buffer.serialize());
+
+        res
+    }
+}
+
 pub struct ApiVersionsResponse {
-    pub error_code: i16
+    pub error_code: i16,
+    pub versions: CompactArray<ApiVersion>,
+    pub throttle_time_ms: i32,
+    pub tag_buffer: TagBuffer
 }
 
 impl ApiVersionsResponse {
@@ -69,6 +154,9 @@ impl ApiVersionsResponse {
         let mut res: Vec<u8> = Vec::new();
 
         res.extend(self.error_code.to_be_bytes());
+        res.extend(self.versions.serialize());
+        res.extend(self.throttle_time_ms.to_be_bytes());
+        res.extend(self.tag_buffer.serialize());
 
         res 
     }

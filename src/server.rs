@@ -1,6 +1,6 @@
 use std::{io::{Read, Write}, net::TcpListener, net::TcpStream};
 use std::io::Cursor;
-use crate::wire::{ApiVersionsResponse, Request, Response};
+use crate::wire::{ApiVersion, ApiVersionsResponse, CompactArray, Request, Response, TagBuffer, Serializable};
 
 pub struct Server {}
 
@@ -14,7 +14,7 @@ impl Server {
                     handle_stream(stream);
                 }
                 Err(e) => {
-                    println!("error: {}", e);
+                    eprintln!("error: {}", e);
                 }
             }
         }
@@ -62,6 +62,19 @@ fn handle_stream(mut stream: TcpStream) {
     let _ = stream.write(&res.serialize());
 }
 
-fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, String>{
-    Ok(ApiVersionsResponse{error_code: 35})
+fn handle_api_versions_req(_request: &Request) -> Result<ApiVersionsResponse, String>{
+    let mut versions: CompactArray<ApiVersion> = CompactArray::default(); 
+    versions.append(ApiVersion{
+        key: 18,
+        min: 0,
+        max: 4,
+        tag_buffer:TagBuffer{data:0},
+    });
+
+    Ok(ApiVersionsResponse{
+        error_code: 0,
+        versions,
+        throttle_time_ms: 0,
+        tag_buffer: TagBuffer { data: 0 }
+    })
 }
