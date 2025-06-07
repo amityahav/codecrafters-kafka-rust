@@ -29,6 +29,7 @@ impl Server {
 }
 
 const API_VERSIONS: i16 = 18;
+const DESCRIBE_TOPIC_PARTITIONS: i16 = 75;
 
 fn apply_handler(request: &Request) -> Result<Vec<u8>, String> {
     match request.header.request_api_key {
@@ -100,6 +101,13 @@ fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, Str
 
     versions.append(ApiVersion{
         key: API_VERSIONS,
+        min: 0,
+        max: 4,
+        tag_buffer:TagBuffer{data:0},
+    });
+
+    versions.append(ApiVersion{
+        key: DESCRIBE_TOPIC_PARTITIONS,
         min: 0,
         max: 4,
         tag_buffer:TagBuffer{data:0},
