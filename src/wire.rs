@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::{Cursor, Read}};
 use byteorder::{ReadBytesExt, BigEndian};
 
 pub trait Serializable {
@@ -56,6 +56,34 @@ impl <T: Serializable> Serializable for CompactArray<T> {
     }
 }
 
+pub struct CompactString {
+    data: String
+}
+
+impl CompactString {
+    pub fn deserialize(&mut self, mut reader: Cursor<&[u8]>) {
+        let string_len = reader.read_i8().unwrap();
+
+        let mut buf = vec![0u8; string_len as usize];
+        let _ = reader.read_exact(&mut buf);
+
+        self.data = String::from_utf8(buf).unwrap();
+    }
+}
+
+impl Serializable for CompactString {
+    fn serialize(&self) -> Vec<u8> {
+        let mut res = Vec::new();
+
+        let len_varint = Varint{value: (self.data.len() + 1) as i8};
+
+        res.extend(len_varint.serialize());
+        res.extend(self.data.as_bytes());
+
+        res
+    }
+}
+
 #[derive(Default)]
 pub struct RequestHeader {
     pub request_api_key: i16,
@@ -85,6 +113,24 @@ impl Request {
         self.header.deserialize(reader);
     }
 }
+
+pub struct Topic {
+
+}
+
+pub struct DescribeTopicPartitionsRequest {
+    pub topics: CompactArray<CompactString>,
+    pub partitions_limit: i32,
+    pub cursor: u8,
+    pub tag_buffer: TagBuffer,
+}
+
+impl DescribeTopicPartitionsRequest {
+    pub fn deserialize(&mut self, reader: Cursor<&[u8]>) {
+        
+    }
+}
+
 pub struct Response {
     pub header: i32, // correlation-id
     pub body: Vec<u8>
@@ -158,5 +204,15 @@ impl ApiVersionsResponse {
         res.extend(self.tag_buffer.serialize());
 
         res 
+    }
+}
+
+pub struct DescribeTopicPartitionsResponse {
+
+}
+
+impl DescribeTopicPartitionsResponse {
+    pub fn serialize(&self) -> Vec<u8> {
+        
     }
 }

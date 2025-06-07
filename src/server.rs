@@ -2,7 +2,7 @@ use std::{io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}};
 use std::io::Cursor;
 use std::thread;
 
-use crate::wire::{ApiVersion, ApiVersionsResponse, CompactArray, Request, Response, TagBuffer, Serializable};
+use crate::wire::{ApiVersion, ApiVersionsResponse, DescribeTopicPartitionsResponse, CompactArray, Request, Response, TagBuffer, Serializable};
 
 pub struct Server {}
 
@@ -38,8 +38,14 @@ fn apply_handler(request: &Request) -> Result<Vec<u8>, String> {
                 Ok(res) => Ok(res.serialize()),
                 Err(e) => Err(format!("Failed handling ApiVersions request: {}", e))
             }
-            
         },
+        DESCRIBE_TOPIC_PARTITIONS => {
+            match handle_describe_topic_partitions_req(request) {
+                Ok(res) => Ok(res.serialize()),
+                Err(e) => Err(format!("Failed handling DescribeTopicPartitions request: {}", e))
+            }
+        }
+
         i16::MIN..=17_i16 | 19_i16..=i16::MAX => todo!()
     }
 }
@@ -63,9 +69,9 @@ fn handle_stream(mut stream: TcpStream) -> Result<(), String> {
         let mut request_buf = vec![0u8; message_size];
         let _ = stream.read_exact(&mut request_buf);
 
-        // deserialize request.
+        // deserialize request header.
         let mut request = Request::default();
-        request.deserialize(Cursor::new(&request_buf));
+        request.header.deserialize(Cursor::new(&request_buf));
 
         match apply_handler(&request) {
             Ok(res) => {
@@ -119,4 +125,8 @@ fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, Str
         throttle_time_ms: 0,
         tag_buffer: TagBuffer { data: 0 }
     })
+}
+
+fn handle_describe_topic_partitions_req(req: &Request) -> Result<DescribeTopicPartitionsResponse, String> {
+
 }
