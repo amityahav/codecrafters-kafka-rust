@@ -5,10 +5,40 @@ pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
 }
 
+pub trait Deserializable {
+    fn deserialize(&mut self,  reader: &mut Cursor<&[u8]>);
+}
+
+#[derive(Default)]
+struct Int8 {
+    value: i8
+}
+
+impl Serializable for Int8 {
+    fn serialize(&self) -> Vec<u8> {
+        let mut res = Vec::new();
+        res.extend(self.value.to_be_bytes());
+
+        res
+    }
+}
+
+impl Deserializable for Int8 {
+    fn deserialize(&mut self,  reader: &mut Cursor<&[u8]>) {
+        self.value = reader.read_i8().unwrap();
+    }
+}
+
 #[derive(Default)]
 struct NullableString {
     length: i16,
     data: Vec<u8>
+}
+
+impl Deserializable for NullableString {
+    fn deserialize(&mut self,  reader: &mut Cursor<&[u8]>) {
+
+    }
 }
 
 fn zigzag_encode(n: i8) -> u8 {
@@ -30,38 +60,68 @@ impl Serializable for Varint {
     }
 }
 
-#[derive(Default)]
-pub struct CompactArray<T: Serializable> {
-    data: Vec<T>,
-}
-
-impl<T: Serializable> CompactArray<T> {
-    pub fn append(&mut self, elem: T) {
-        self.data.push(elem);
+impl Varint {
+    fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
+        self.value = reader.read_i8().unwrap() - 1;
     }
 }
 
-impl <T: Serializable> Serializable for CompactArray<T> {
+#[derive(Default)]
+pub struct CompactArray<T: Serializable + Deserializable + Default> {
+    data: Option<Vec<T>>,
+}
+
+impl<T: Serializable + Deserializable + Default> CompactArray<T> {
+    pub fn append(&mut self, elem: T) {
+        match &mut self.data {
+            Some(data) => data.push(elem),
+            None => {}
+        }
+    }
+}
+
+impl <T: Serializable + Deserializable + Default> Deserializable for CompactArray<T> {
+    fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
+        let mut len_varint = Varint::default();
+        len_varint.deserialize(reader);
+
+        for _i in 0..len_varint.value {
+            let mut elem = T::default();
+            elem.deserialize(reader);
+            self.append(elem);
+        }
+    }
+}
+
+impl <T: Serializable + Deserializable + Default> Serializable for CompactArray<T> {
     fn serialize(&self) -> Vec<u8> {
         let mut res = Vec::new();
 
-        let len_varint = Varint{value: (self.data.len() + 1) as i8};
-
-        res.extend(len_varint.serialize());
-        for elem in &self.data {
-            res.extend(elem.serialize());
+        match &self.data {
+            Some(data) => {
+                let len_varint = Varint{value: (data.len() + 1) as i8};
+                res.extend(len_varint.serialize());
+                for elem in data {
+                    res.extend(elem.serialize());
+                }
+            }
+            None => {
+                let len_varint = Varint{value: 0};
+                res.extend(len_varint.serialize());
+            }
         }
 
         res
     }
 }
 
+#[derive(Default)]
 pub struct CompactString {
     data: String
 }
 
-impl CompactString {
-    pub fn deserialize(&mut self, mut reader: Cursor<&[u8]>) {
+impl Deserializable for CompactString {
+    fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
         let string_len = reader.read_i8().unwrap();
 
         let mut buf = vec![0u8; string_len as usize];
@@ -90,15 +150,16 @@ pub struct RequestHeader {
     pub request_api_version: i16,
     pub correlation_id: i32,
     client_id: NullableString,
-    //tag_buffer: CompactArray<String>
+    tag_buffer: CompactArray<Int8>
 }
 
 impl RequestHeader {
-    pub fn deserialize(&mut self, mut reader: Cursor<&[u8]>) {
+    pub fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
         self.request_api_key = reader.read_i16::<BigEndian>().unwrap();
         self.request_api_version = reader.read_i16::<BigEndian>().unwrap();
         self.correlation_id = reader.read_i32::<BigEndian>().unwrap();
-        // .. todo other fields
+        self.client_id.deserialize(reader);
+        self.tag_buffer.deserialize(reader);
     }
 }
 
@@ -109,25 +170,24 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn deserialize(&mut self, reader: Cursor<&[u8]>) {
+    pub fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
         self.header.deserialize(reader);
     }
-}
-
-pub struct Topic {
-
 }
 
 pub struct DescribeTopicPartitionsRequest {
     pub topics: CompactArray<CompactString>,
     pub partitions_limit: i32,
     pub cursor: u8,
-    pub tag_buffer: TagBuffer,
+    pub tag_buffer: CompactArray<Int8>,
 }
 
 impl DescribeTopicPartitionsRequest {
-    pub fn deserialize(&mut self, reader: Cursor<&[u8]>) {
-        
+    pub fn deserialize(&mut self, reader: &mut Cursor<&[u8]>) {
+        self.topics.deserialize(reader);
+        self.partitions_limit = reader.read_i32::<BigEndian>().unwrap();
+        self.cursor = reader.read_u8().unwrap();
+        self.tag_buffer.deserialize(reader);
     }
 }
 
@@ -151,27 +211,11 @@ impl Serializable for Response {
 }
 
 #[derive(Default)]
-pub struct TagBuffer {
-    pub data: u8
-}
-
-impl Serializable for TagBuffer {
-    fn serialize(&self) -> Vec<u8> {
-        // return 0 for now
-        let mut res = Vec::new();
-
-        res.extend(0_u8.to_be_bytes());
-
-        res
-    }
-}
-
-#[derive(Default)]
 pub struct ApiVersion {
     pub key: i16,
     pub min: i16,
     pub max: i16,
-    pub tag_buffer: TagBuffer
+    pub tag_buffer: CompactArray<Int8>,
 }
 
 impl Serializable for ApiVersion {
@@ -187,11 +231,20 @@ impl Serializable for ApiVersion {
     }
 }
 
+impl Deserializable for ApiVersion {
+    fn deserialize(&mut self,  reader: &mut Cursor<&[u8]>) {
+        self.key = reader.read_i16::<BigEndian>().unwrap();
+        self.min = reader.read_i16::<BigEndian>().unwrap();
+        self.max = reader.read_i16::<BigEndian>().unwrap();
+        self.tag_buffer.deserialize(reader);
+    }
+}
+
 pub struct ApiVersionsResponse {
     pub error_code: i16,
     pub versions: CompactArray<ApiVersion>,
     pub throttle_time_ms: i32,
-    pub tag_buffer: TagBuffer
+    pub tag_buffer: CompactArray<Int8>
 }
 
 impl ApiVersionsResponse {
@@ -213,6 +266,6 @@ pub struct DescribeTopicPartitionsResponse {
 
 impl DescribeTopicPartitionsResponse {
     pub fn serialize(&self) -> Vec<u8> {
-        
+
     }
 }

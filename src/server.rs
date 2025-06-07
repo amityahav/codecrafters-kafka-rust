@@ -2,7 +2,7 @@ use std::{io::{ErrorKind, Read, Write}, net::{TcpListener, TcpStream}};
 use std::io::Cursor;
 use std::thread;
 
-use crate::wire::{ApiVersion, ApiVersionsResponse, DescribeTopicPartitionsResponse, CompactArray, Request, Response, TagBuffer, Serializable};
+use crate::wire::{ApiVersion, ApiVersionsResponse, DescribeTopicPartitionsResponse, CompactArray, Request, Response, Serializable};
 
 pub struct Server {}
 
@@ -71,7 +71,7 @@ fn handle_stream(mut stream: TcpStream) -> Result<(), String> {
 
         // deserialize request header.
         let mut request = Request::default();
-        request.header.deserialize(Cursor::new(&request_buf));
+        request.header.deserialize(&mut Cursor::new(&request_buf));
 
         match apply_handler(&request) {
             Ok(res) => {
@@ -109,21 +109,21 @@ fn handle_api_versions_req(request: &Request) -> Result<ApiVersionsResponse, Str
         key: API_VERSIONS,
         min: 0,
         max: 4,
-        tag_buffer:TagBuffer{data:0},
+        tag_buffer:CompactArray::default(),
     });
 
     versions.append(ApiVersion{
         key: DESCRIBE_TOPIC_PARTITIONS,
         min: 0,
         max: 4,
-        tag_buffer:TagBuffer{data:0},
+        tag_buffer:CompactArray::default(),
     });
 
     Ok(ApiVersionsResponse{
         error_code,
         versions,
         throttle_time_ms: 0,
-        tag_buffer: TagBuffer { data: 0 }
+        tag_buffer:CompactArray::default(),
     })
 }
 
